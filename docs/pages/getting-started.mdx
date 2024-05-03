@@ -1,3 +1,114 @@
-# Get started
+# Getting Started
 
-Hello world!
+There are three parties involved in the ERC-7677 flow: paymaster services, apps, and wallets.
+
+* Paymaster services implement ERC-7677 `pm_` RPC methods.
+* Apps give wallets their paymaster service URLs. This is done using the `paymasterService` capability as part of a EIP-5792 `wallet_sendCalls` request.
+* Wallets communicate with paymaster services at the URL provided by apps, using the standardized RPC methods to get paymaster-related fields during user operation construction.
+
+Here is a high-level flow of what this looks like:
+
+![erc-7677](/1.png)
+
+## Paymaster Services
+
+For a paymaster service to be ERC-7677 compliant, it must implement support for the two `pm_` RPC methods specified in the ERC.
+
+* ### `pm_getPaymasterStubData`
+  * Returns stub values to be used in paymaster-related fields of an unsigned user operation for gas estimation.
+
+* ### `pm_getPaymasterData`
+  * Returns values to be used in paymaster-related fields of a signed user operation.
+
+See the [reference section](./reference/getCapabilities) for details on how these should be implemented.
+
+## Apps
+
+To start using ERC-7677 to sponsor your users' transactions, you'll need to do two things:
+1. Sign up with an ERC-7677-compliant paymaster service provider and get a paymaster service URL.
+2. Send transactions using the EIP-5792 `wallet_sendCalls` method with the `paymasterService` capability.
+
+One note on paymaster service URLs: service providers typically give developers URLs that have API keys in them. More often than not, you'll want to keep these API keys secret.
+
+As a result, we recommend setting up an endpoint on your app's backend that is ultimately responsible for communication with your chosen paymaster service provider. Check out the [guide on setitng up a paymaster service proxy](/guides/setting-up-paymaster-proxy) for more.
+
+Once you've signed up with a paymaster service provider and set up your proxy, you're ready to use the `wallet_sendCalls` RPC method to start sponsoring your users' transactions. The easiest way to do this is to use Wagmi:
+
+```tsx twoslash [App.tsx]
+import React from 'react'
+// ---cut---
+import { useWriteContracts } from 'wagmi/experimental'
+import { parseAbi } from 'viem'
+
+const abi = parseAbi([
+  'function approve(address, uint256) returns (bool)',
+  'function transferFrom(address, address, uint256) returns (bool)',
+])
+
+function App() {
+  const { writeContracts } = useWriteContracts()
+
+  return (
+    <button
+      onClick={() =>
+        writeContracts({
+          contracts: [
+            {
+              address: '0xFBA3912Ca04dd458c843e2EE08967fC04f3579c2',
+              abi,
+              functionName: 'approve',
+              args: [
+                '0xa5cc3c03994DB5b0d9A5eEdD10CabaB0813678AC', 
+                100n
+              ],
+            },
+            {
+              address: '0xFBA3912Ca04dd458c843e2EE08967fC04f3579c2',
+              abi,
+              functionName: 'transferFrom',
+              args: [
+                '0xa5cc3c03994DB5b0d9A5eEdD10CabaB0813678AC',
+                '0x0000000000000000000000000000000000000000',
+                100n
+              ],
+            },
+          ],
+          capabilities: { // [!code hl]
+            paymasterService: { // [!code hl]
+              url: 'https://...' // Your ERC-7677-compliant paymaster service URL. // [!code hl]
+            } // [!code hl]
+          } // [!code hl]
+        })
+      }
+    >
+      Send calls
+    </button>
+  )
+}
+```
+
+See the [Wagmi documentation](https://wagmi.sh/react/api/hooks/useWriteContracts) for more.
+
+## Wallets
+
+As a prerequisite, wallets will need to be EIP-5792-compliant to leverage ERC-7677. You can find more about adding EIP-5792 support to your wallet [on this page](https://eip5792.xyz/getting-started).
+
+Once your wallet is EIP-5792-compliant, it will need to do two things to support ERC-7677:
+1. Indicate it can support sponsoring transactions via paymaster services as part of its reponse to `wallet_getCapabilities` requests.
+```ts twoslash
+// @noErrors
+provider.request({
+  method: 'wallet_getCapabilities',
+  params: ['0xd46e8dd67c5d32be8058bb8eb970870f07244567']
+})
+// @log: {
+// @log:   "0x2105": {
+// @log:     paymasterService: {
+// @log:       supported: true,
+// @log:     }
+// @log:   }
+// @log: }
+```
+2. Communicate with paymaster services at URLs provided by apps using the new `pm_` RPC methods.
+
+See the [guide on constructing a user operation with ERC-7677](./guides/construct-user-op-with-7677) for more.
