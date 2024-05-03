@@ -4,6 +4,16 @@ export default defineConfig({
   title: 'ERC-7677',
   titleTemplate: '%s · ERC-7677',
   description: 'Standards for unlocking gasless experiences',
+  head() {
+    return (
+      <>
+        <script
+          dangerouslySetInnerHTML={{ __html: 'window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };'}}
+        />
+        <script defer src="/_vercel/insights/script.js" />
+      </>
+    )
+  },
   theme: {
     accentColor: {
       light: '#73F7FF',
