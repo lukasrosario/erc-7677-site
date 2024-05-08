@@ -3,7 +3,7 @@ import { defineConfig } from 'vocs'
 export default defineConfig({
   title: 'ERC-7677',
   titleTemplate: '%s · ERC-7677',
-  description: 'Standards for unlocking gasless experiences',
+  description: 'Standards for unlocking sponsored transactions',
   ogImageUrl: 'https://vocs.dev/api/og?title=%title&description=%description',
   head() {
     return (
