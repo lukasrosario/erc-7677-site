@@ -1,0 +1,22 @@
+# `wallet_getCapabilities` Usage
+
+To check if a wallet supports ERC-7677, you can inspect its response to an EIP-5792 `wallet_getCapabilities` request. If the wallet supports ERC-7677, it will have a `paymasterService` capability with a `supported` field set to `true` for each chain it supports paymaster services on.
+
+If you are an app developer, you might want to do this so you can display to your users that their transaction will be sponsored.
+
+## Example
+
+```ts twoslash
+// @noErrors
+provider.request({
+  method: 'wallet_getCapabilities',
+  params: ['0xd46e8dd67c5d32be8058bb8eb970870f07244567']
+})
+// @log: {
+// @log:   "0x2105": {
+// @log:     paymasterService: {
+// @log:       supported: true,
+// @log:     }
+// @log:   }
+// @log: }
+```

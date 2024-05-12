@@ -1,1 +1,293 @@
-Coming soon...
+# `pm_getPaymasterData`
+
+Returns values to be used in paymaster-related fields of a signed user operation. These are not stub values and will be included in a signed user operation as part of an `eth_sendUserOperation` call to a bundler. Similar to `pm_getPaymasterStubData`, accepts an unsigned user operation, entrypoint address, chain ID, and a context object.
+
+Paymaster services must detect which EntryPoint version is being used and handle and respond to requests according to the EntryPoint version detected. Differences in parameters and return values across different EntryPoint versions are specified below.
+
+## EntryPoint v0.6
+
+### Example Usage
+
+:::code-group
+ 
+```bash [cURL]
+curl --location <YOUR_PAYMASTER_URL> \
+--header 'Content-Type: application/json' \
+--data '{"method":"pm_getPaymasterData","params":[{
+      "sender": "0xd46e8dd67c5d32be8058bb8eb970870f07244567",
+      "nonce": "0x2a",
+      "initCode": "0x",
+      "callData": "0xd46e8dd67c5d32be8d46e8dd67c5d32be8058bb8eb970870f072445675058bb8eb970870f072445675",
+      "callGasLimit": "0x0",
+      "verificationGasLimit": "0x0",
+      "preVerificationGas": "0x0",
+      "maxFeePerGas": "0x0",
+      "maxPriorityFeePerGas": "0x0"
+    }, "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789", "0x14A34",
+    {
+      "policyId": "631528b0-d444-4a9b-a575-40dd3aa4a13a"
+    }],"jsonrpc":"2.0", "id": 1}'
+# {
+#   "jsonrpc": "2.0",
+#   "id": 1,
+#   "result": {
+#     "paymasterAndData": "0xe3dc822D77f23984723871310CAAA32100000000000000000000000000000000000000000000000000000101010101010000000000000000000000000000000000000000000000000000000000000000cd91f19f0f19ce862d7bec7b7d9b95457145afc6f639c28fd0360f488937bfa41e6eedcd3a46054fd95fcd0e3ef6b0bc0a615c4d975eef55c8a3517257904d5b1c"
+#   }
+# }
+```
+ 
+```ts twoslash [TypeScript]
+const process = { env: { PAYMASTER_URL: '' } }
+// ---cut---
+const response = await fetch(
+  process.env.PAYMASTER_URL, // Your paymaster URL
+  {
+    method: "POST",
+    headers: new Headers({ "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      method: "pm_getPaymasterData",
+      params: [
+        {
+          sender: "0xd46e8dd67c5d32be8058bb8eb970870f07244567",
+          nonce: "0x2a",
+          initCode: "0x",
+          callData:
+            "0xd46e8dd67c5d32be8d46e8dd67c5d32be8058bb8eb970870f072445675058bb8eb970870f072445675",
+          callGasLimit: "0x0",
+          verificationGasLimit: "0x0",
+          preVerificationGas: "0x0",
+          maxFeePerGas: "0x0",
+          maxPriorityFeePerGas: "0x0",
+        },
+        "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789",
+        "0x14A34",
+        {
+          policyId: "631528b0-d444-4a9b-a575-40dd3aa4a13a",
+        },
+      ],
+      jsonrpc: "2.0",
+      id: 1,
+    }),
+  }
+)
+
+const result = await response.json()
+// @log: {
+// @log:   "jsonrpc": "2.0",
+// @log:   "id": 1,
+// @log:   "result": {
+// @log:     "paymasterAndData": "0xe3dc822D77f23984723871310CAAA32100000000000000000000000000000000000000000000000000000101010101010000000000000000000000000000000000000000000000000000000000000000cd91f19f0f19ce862d7bec7b7d9b95457145afc6f639c28fd0360f488937bfa41e6eedcd3a46054fd95fcd0e3ef6b0bc0a615c4d975eef55c8a3517257904d5b1c"
+// @log:   }
+// @log: }
+```
+ 
+:::
+
+### Parameters
+
+An array with the following entries:
+
+* #### 1. User operation
+  * `UserOperation`
+  * For EntryPoint v0.6, the `UserOperation` type is defined as an object that has the following fields:
+    * sender
+      * `Address`
+      * The account making the operation.
+    * nonce
+      * `Hex`
+      * Anti-replay parameter.
+    * initCode
+      * `Hex`
+      * The initCode of the account.
+    * callData
+      * `Hex`
+      * The data to pass to the `sender` during the main execution call.
+    * callGasLimit
+      * `Hex`
+      * The amount of gas to allocate the main execution call.
+    * verificationGasLimit
+      * `Hex`
+      * The amount of gas to allocate for the verification step.
+    * preVerificationGas
+      * `Hex`
+      * The amount of gas to pay for to compensate the bundler for pre-verification execution and calldata.
+    * maxFeePerGas
+      * `Hex`
+      * Maximum fee per gas.
+    * maxPriorityFeePerGas
+      * `Hex`
+      * Maximum priority fee per gas
+
+* #### 2. EntryPoint
+  * `Address`
+  * The entrypoint address the user operation will be sent through.
+
+* #### 3. Chain ID
+  * `Hex`
+  * The chain ID of the chain the user operation will be submitted on.
+
+* #### 4. Context (optional)
+  * `Object`
+  * An object with fields defined by paymaster service providers. This is where app developers could include something like a policy ID which identifies sponsorship constraints, where the constraints are configured by developers with their service providers.
+
+### Returns
+
+An object with the following fields:
+
+* #### paymasterAndData
+  * `Hex`
+  * Stub or "dummy" paymasterAndData field for a wallet to use during user operation gas estimation.
+  
+## EntryPoint v0.7
+
+### Example Usage
+
+:::code-group
+ 
+```bash [cURL]
+curl --location <YOUR_PAYMASTER_URL> \
+--header 'Content-Type: application/json' \
+--data '{"method":"pm_getPaymasterData","params":[{
+      "sender": "0xd46e8dd67c5d32be8058bb8eb970870f07244567",
+      "nonce": "0x2a",
+      "factory": "0x0BA5ED0c6AA8c49038F819E587E2633c4A9F428a",
+      "factoryData": "0x",
+      "callData": "0xd46e8dd67c5d32be8d46e8dd67c5d32be8058bb8eb970870f072445675058bb8eb970870f072445675",
+      "callGasLimit": "0x0",
+      "verificationGasLimit": "0x0",
+      "preVerificationGas": "0x0",
+      "maxFeePerGas": "0x0",
+      "maxPriorityFeePerGas": "0x0",
+      "paymasterVerificationGasLimit": "0x0",
+      "paymasterPostOpGasLimit": "0x0"
+    }, "0x0000000071727De22E5E9d8BAf0edAc6f37da032", "0x14A34",
+    {
+      "policyId": "631528b0-d444-4a9b-a575-40dd3aa4a13a" 
+    }],"jsonrpc":"2.0", "id": 1}'
+# {
+#   "jsonrpc": "2.0",
+#   "id": 1,
+#   "result": {
+#     "paymaster": "0x9d0021A869123d3a661Ffe8C9B41Ec6244261d98",
+#     "paymasterData": "0x00000000000000000000000000000000000000000000000000000101010101010000000000000000000000000000000000000000000000000000000000000000cd91f19f0f19ce862d7bec7b7d9b95457145afc6f639c28fd0360f488937bfa41e6eedcd3a46054fd95fcd0e3ef6b0bc0a615c4d975eef55c8a3517257904d5b1c"
+#   }
+# }
+```
+ 
+```ts twoslash [TypeScript]
+const process = { env: { PAYMASTER_URL: '' } }
+// ---cut---
+const response = await fetch(
+  process.env.PAYMASTER_URL, // Your paymaster URL
+  {
+    method: "POST",
+    headers: new Headers({ "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      method: "pm_getPaymasterStubData",
+      params: [
+        {
+          sender: "0xd46e8dd67c5d32be8058bb8eb970870f07244567",
+          nonce: "0x2a",
+          factory: "0x0BA5ED0c6AA8c49038F819E587E2633c4A9F428a",
+          factoryData: "0x",
+          callData: "0xd46e8dd67c5d32be8d46e8dd67c5d32be8058bb8eb970870f072445675058bb8eb970870f072445675",
+          callGasLimit: "0x0",
+          verificationGasLimit: "0x0",
+          preVerificationGas: "0x0",
+          maxFeePerGas: "0x0",
+          maxPriorityFeePerGas: "0x0",
+          paymasterVerificationGasLimit: "0x0",
+          paymasterPostOpGasLimit: "0x0"
+        },
+        "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+        "0x14A34",
+        {
+          policyId: "631528b0-d444-4a9b-a575-40dd3aa4a13a",
+        },
+      ],
+      jsonrpc: "2.0",
+      id: 1,
+    }),
+  }
+)
+
+const result = await response.json()
+// @log: {
+// @log:   "jsonrpc": "2.0",
+// @log:   "id": 1,
+// @log:   "result": {
+// @log:     "paymaster": "0x9d0021A869123d3a661Ffe8C9B41Ec6244261d98",
+// @log:     "paymasterData": "0x00000000000000000000000000000000000000000000000000000101010101010000000000000000000000000000000000000000000000000000000000000000cd91f19f0f19ce862d7bec7b7d9b95457145afc6f639c28fd0360f488937bfa41e6eedcd3a46054fd95fcd0e3ef6b0bc0a615c4d975eef55c8a3517257904d5b1c"
+// @log:   }
+// @log: }
+```
+ 
+:::
+
+### Parameters
+
+An array with the following entries:
+
+* #### 1. User operation
+  * `UserOperation`
+  * For EntryPoint v0.7, the `UserOperation` type is defined as an object that has the following fields:
+    * sender
+      * `Address`
+      * The account making the operation.
+    * nonce
+      * `Hex`
+      * Anti-replay parameter.
+    * factory
+      * `Address`
+      * The account factory.
+    * factoryData
+      * `Hex`
+      * Data for account factory.
+    * callData
+      * `Hex`
+      * The data to pass to the `sender` during the main execution call.
+    * callGasLimit
+      * `Hex`
+      * The amount of gas to allocate the main execution call.
+    * verificationGasLimit
+      * `Hex`
+      * The amount of gas to allocate for the verification step.
+    * preVerificationGas
+      * `Hex`
+      * The amount of gas to pay for to compensate the bundler for pre-verification execution and calldata.
+    * maxFeePerGas
+      * `Hex`
+      * Maximum fee per gas.
+    * maxPriorityFeePerGas
+      * `Hex`
+      * Maximum priority fee per gas
+    * paymasterVerificationGasLimit
+      * `Hex`
+      * The amount of gas to allocate for the paymaster validation code
+    * paymasterPostOpGasLimit
+      * `Hex`
+      * The amount of gas to allocate for the paymaster post-operation code
+
+* #### 2. EntryPoint
+  * `Address`
+  * The entrypoint address the user operation will be sent through.
+
+* #### 3. Chain ID
+  * `Hex`
+  * The chain ID of the chain the user operation will be submitted on.
+
+* #### 4. Context (optional)
+  * `Object`
+  * An object with fields defined by paymaster service providers. This is where app developers could include something like a policy ID which identifies sponsorship constraints, where the constraints are configured by developers with their service providers.
+
+### Returns
+
+An object with the following fields:
+
+* #### paymaster
+  * `Address`
+  * The address of the paymaster.
+
+* #### paymasterData
+  * `Hex`
+  * Stub or "dummy" value for the paymaster to be used by wallets during user operation gas estimation.

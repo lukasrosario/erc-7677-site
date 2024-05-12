@@ -1,0 +1,151 @@
+# Sponsoring your users' transactions
+
+## Who this guide is for
+
+This guide is for app developers who want to sponsor their users' transactions.
+
+## Using Wagmi + permissionless.js in a Next.js app
+
+### 1. Choose a paymaster service provider
+
+As a prerequisite, you'll need to obtain a paymaster service URL from a paymaster service provider. You can find a list of ERC-7677-compliant service providers [here](/ecosystem/paymasters).
+
+Once you choose a paymaster service provider and obtain a paymaster service URL, you can proceed to integration.
+
+### 2. (Recommended) Set up your paymaster service proxy
+
+Paymaster service providers commonly give developers URLs with API keys in them. Setting up a paymaster service proxy allows you keep these keys secret.
+
+It also allows you to add extra validation on what requests you want to sponsor.
+
+Setting up a paymaster service proxy turns the flow from the [getting started section](/getting-started) from this:
+
+![erc-7677](/1.png)
+
+into this:
+
+![erc-7677-with-proxy](/0.png)
+
+The proxy you create will need to handle the `pm_getPaymasterStubData` and `pm_getPaymasterData` JSON-RPC requests specified by ERC-7677.
+
+:::code-group
+```ts twoslash [route.ts]
+// @filename: config.ts
+// [!include ~/snippets/config.ts]
+
+// @filename: route.ts
+// ---cut---
+import { paymasterClient } from "./config";
+ 
+export async function POST(r: Request) {
+  const req = await r.json();
+  const method = req.method;
+  const [userOp, entrypoint, chainId] = req.params;
+ 
+  if (method === "pm_getPaymasterStubData") {
+    const result = await paymasterClient.getPaymasterStubData({
+      userOperation: userOp,
+    });
+    return Response.json({ result });
+  } else if (method === "pm_getPaymasterData") {
+    const result = await paymasterClient.getPaymasterData({
+      userOperation: userOp,
+    });
+    return Response.json({ result });
+  }
+  return Response.json({ error: "Method not found" });
+}
+```
+
+```ts twoslash [config.ts]
+// @filename: config.ts
+// ---cut---
+// [!include ~/snippets/config.ts]
+```
+:::
+
+### 3. Send EIP-5792 requests with a paymaster service capability
+
+Once you have your paymaster service set up, you can now pass its URL along to Wagmi's `useWriteContracts` hook.
+
+If you set up a proxy in your app's backend as recommended in step (2) above, you'll want to pass in the proxy URL you created.
+
+:::code-group
+```ts twoslash [App.tsx]
+import { useAccount, useChainId } from "wagmi";
+import { useCapabilities, useWriteContracts } from "wagmi/experimental";
+import { useMemo } from "react";
+import { CallStatus } from "./CallStatus";
+import { myNFTABI, myNFTAddress } from "./myNFT";
+
+export function App() {
+  const account = useAccount();
+  const chainId = useChainId();
+  const { data: id, writeContracts } = useWriteContracts({
+    mutation: { onSuccess: (id) => setId(id) },
+  });
+  const { data: availableCapabilities } = useCapabilities({
+    account: account.address,
+  });
+  
+  const capabilities = useMemo(() => {
+    if (!availableCapabilities || !chainId) return {};
+    const capabilitiesForChain = availableCapabilities[chainId];
+    if (
+      capabilitiesForChain["paymasterService"] &&
+      capabilitiesForChain["paymasterService"].supported
+    ) {
+      return {
+        paymasterService: {
+          url: `${document.location.origin}/api/paymaster`,
+        },
+      };
+    }
+    return {};
+  }, [availableCapabilities, chainId]);
+
+  return (
+    <div>
+      <h2>Transact With Paymaster</h2>
+      <p>{JSON.stringify(capabilities)}</p>
+      <div>
+        <button
+          onClick={() => {
+            writeContracts({
+              contracts: [
+                {
+                  address: myNFTAddress,
+                  abi: myNFTABI,
+                  functionName: "safeMint",
+                  args: [account.address],
+                },
+              ],
+              capabilities,
+            });
+          }}
+        >
+          Mint
+        </button>
+        {id && <CallStatus id={id} />}
+      </div>
+    </div>
+  );
+}
+```
+```ts twoslash [myNFT.ts] filename="myNFT.ts"
+export const myNFTABI = [
+  {
+    stateMutability: "nonpayable",
+    type: "function",
+    inputs: [{ name: "to", type: "address" }],
+    name: "safeMint",
+    outputs: [],
+  },
+] as const;
+
+export const myNFTAddress = "0x119Ea671030FBf79AB93b436D2E20af6ea469a19";
+
+```
+:::
+
+That's it! If a user is connected to your app with an ERC-7677-compliant wallet, the wallet will handle the rest.

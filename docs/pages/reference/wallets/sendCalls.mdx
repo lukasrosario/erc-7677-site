@@ -1,0 +1,6 @@
+# `wallet_sendCalls` Behavior
+
+For a wallet to be ERC-7677, it must do to things:
+
+1. As a prerequisite, it must support [EIP-5792](https://eip5792.xyz). This is because apps provide paymaster service URLs as part of EIP-5792 `wallet_sendCalls` requests.
+2. It must communicate with app-provided paymasters using the `pm_` RPC methods defined in ERC-7677 during user operation construction. See the paymaster service reference section to learn more about the paymaster service RPC methods–[`pm_getPaymasterStubData`](/reference/paymasters/getPaymasterStubData) and [`pm_getPaymasterData`](/reference/paymasters/getPaymasterData)–and check out the [guide on constructing user operations with ERC-7677](/guides/construct-user-op-with-7677).

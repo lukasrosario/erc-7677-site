@@ -54,8 +54,8 @@ export default defineConfig({
       collapsed: false,
       items: [
         {
-          text: 'Setting up a paymaster service proxy',
-          link: '/guides/setting-up-paymaster-proxy',
+          text: "Sponsoring your users' transactions",
+          link: '/guides/sponsoring-transactions',
         },
         {
           text: 'Constructing a user operation with ERC-7677',
@@ -86,6 +86,23 @@ export default defineConfig({
             {
               text: 'wallet_getCapabilities Behavior',
               link: '/reference/wallets/getCapabilities'
+            },
+            {
+              text: 'wallet_sendCalls Behavior',
+              link: '/reference/wallets/sendCalls'
+            }
+          ]
+        },
+        {
+          text: 'Apps',
+          items: [
+            {
+              text: 'wallet_sendCalls Usage',
+              link: '/reference/apps/sendCalls'
+            },
+            {
+              text: 'wallet_getCapabilities Usage',
+              link: '/reference/apps/getCapabilities'
             },
           ]
         },
