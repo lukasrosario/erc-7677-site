@@ -30,7 +30,7 @@ To start using ERC-7677 to sponsor your users' transactions, you'll need to do t
 
 One note on paymaster service URLs: service providers typically give developers URLs that have API keys in them. More often than not, you'll want to keep these API keys secret.
 
-As a result, we recommend setting up an endpoint on your app's backend that is ultimately responsible for communication with your chosen paymaster service provider. Check out the [guide on setitng up a paymaster service proxy](/guides/setting-up-paymaster-proxy) for more.
+As a result, we recommend setting up an endpoint on your app's backend that is ultimately responsible for communication with your chosen paymaster service provider. Check out the [guide on sponsoring your users' transactions](/guides/sponsoring-transactions) for more.
 
 Once you've signed up with a paymaster service provider and set up your proxy, you're ready to use the `wallet_sendCalls` RPC method to start sponsoring your users' transactions. The easiest way to do this is to use Wagmi:
 

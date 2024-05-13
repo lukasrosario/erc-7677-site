@@ -1,1 +1,607 @@
-Coming soon...
+# Constructing a user operation with ERC-7677
+
+## Who this guide is for
+
+This guide is for ERC-4337 wallet developers who want to support app-sponsored transactions.
+
+## Using Wagmi + permissionless.js
+
+As a prerequisite, your wallet will need to support EIP-5792. This is because the ERC-7677 flow is part of an EIP-5792 `wallet_sendCalls` request. Learn more about EIP-5792 [here](https://eip5792.xyz).
+
+Once your wallet supports EIP-5792, you can continue with the rest of this guide, which will focus on the ERC-7677 flow (shown below) from the wallet's perspective.
+
+![erc-7677](/1.png)
+
+This guide is specific to EntryPoint v0.6 but the high level flow is the same for v0.7.
+
+### 1. Construct unsigned user operation for `pm_getPaymasterStubData`
+
+Before communicating with an app-provided paymaster service, we first need to use the calls provided via a `wallet_sendCalls` request to construct a user operation.
+
+```ts twoslash [useSponsoredUserOp.ts]
+import { UserOperation } from "permissionless";
+import { useMemo } from "react";
+import { Address, Hex, concat, toHex } from "viem";
+import { useEstimateMaxPriorityFeePerGas, useGasPrice } from "wagmi";
+import {
+  ENTRYPOINT_ADDRESS_V06_TYPE,
+  GetEntryPointVersion,
+} from "permissionless/types";
+
+type SendCallsParams = {
+  from: Address;
+  chainId: Hex;
+  calls: {
+    to: Address;
+    data: Hex;
+    value: bigint;
+  }[];
+  capabilities: {
+    paymasterService: {
+      url: string;
+      context: Record<string, any>;
+    };
+  };
+};
+
+// Hook that accepts calls and capabilities from an EIP-5792 wallet_sendCalls request.
+export function useSponsoredUserOp({
+  from,
+  chainId,
+  calls,
+  capabilities,
+}: SendCallsParams) {
+  const { data: maxFeePerGas } = useGasPrice();
+  const { data: maxPriorityFeePerGas } = useEstimateMaxPriorityFeePerGas();
+
+  // For illustrative purposes we are just concatenating all the calls' fields together, but in practice the callData
+  // will depend on the account's implementation.
+  const callData = useMemo(
+    () =>
+      concat(
+        calls.map((call) => concat([call.to, call.data, toHex(call.value)]))
+      ),
+    [calls]
+  );
+
+  const userOpPreStubData:
+    | Omit<
+        UserOperation<GetEntryPointVersion<ENTRYPOINT_ADDRESS_V06_TYPE>>,
+        "signature" | "paymasterAndData"
+      >
+    | undefined = useMemo(
+    () =>
+      maxFeePerGas && maxPriorityFeePerGas
+        ? {
+            nonce: 0n,
+            sender: from,
+            initCode: "0x",
+            callData,
+            maxFeePerGas,
+            maxPriorityFeePerGas,
+            preVerificationGas: 0n,
+            verificationGasLimit: 0n,
+            callGasLimit: 0n,
+          }
+        : undefined,
+    [from, maxFeePerGas, maxPriorityFeePerGas, callData]
+  );
+}
+```
+
+### 2. Get stub paymaster values for gas estimation
+
+Use permissionless.js to create a paymaster client and call `pm_getPaymasterStubData` with the above user operation.
+
+:::code-group
+```ts twoslash [useSponsoredUserOp.ts]
+// @filename: usePaymasterStubData.ts
+// [!include ~/snippets/usePaymasterStubData.ts]
+
+// @filename: useSponsoredUserOp.ts
+import { UserOperation } from "permissionless";
+import { useMemo } from "react";
+import { Address, Hex, concat, toHex } from "viem";
+import { useEstimateMaxPriorityFeePerGas, useGasPrice } from "wagmi";
+import {
+  ENTRYPOINT_ADDRESS_V06_TYPE,
+  GetEntryPointVersion,
+} from "permissionless/types";
+import { usePaymasterStubData } from "./usePaymasterStubData";
+
+type SendCallsParams = {
+  from: Address;
+  chainId: Hex;
+  calls: {
+    to: Address;
+    data: Hex;
+    value: bigint;
+  }[];
+  capabilities: {
+    paymasterService: {
+      url: string;
+      context?: Record<string, any>;
+    };
+  };
+};
+
+// Hook that accepts calls and capabilities from an EIP-5792 wallet_sendCalls request.
+export function useSponsoredUserOp({
+  from,
+  chainId,
+  calls,
+  capabilities,
+}: SendCallsParams) {
+  const { data: maxFeePerGas } = useGasPrice();
+  const { data: maxPriorityFeePerGas } = useEstimateMaxPriorityFeePerGas();
+
+  // For illustrative purposes we are just concatenating all the calls' fields together, but in practice the callData
+  // will depend on the account's implementation.
+  const callData = useMemo(
+    () =>
+      concat(
+        calls.map((call) => concat([call.to, call.data, toHex(call.value)]))
+      ),
+    [calls]
+  );
+// ---cut---
+  // ...
+  const userOpPreStubData:
+    | Omit<
+        UserOperation<GetEntryPointVersion<ENTRYPOINT_ADDRESS_V06_TYPE>>,
+        "signature" | "paymasterAndData"
+      >
+    | undefined = useMemo(
+    () =>
+      maxFeePerGas && maxPriorityFeePerGas
+        ? {
+            nonce: 0n,
+            sender: from,
+            initCode: "0x",
+            callData,
+            maxFeePerGas,
+            maxPriorityFeePerGas,
+            preVerificationGas: 0n,
+            verificationGasLimit: 0n,
+            callGasLimit: 0n,
+          }
+        : undefined,
+    [from, maxFeePerGas, maxPriorityFeePerGas, callData]
+  );
+
+  const { data: paymasterStubData } = usePaymasterStubData({ // [!code focus]
+    userOp: userOpPreStubData, // [!code focus]
+    chainId, // [!code focus]
+    paymasterUrl: capabilities.paymasterService.url, // [!code focus]
+    context: capabilities.paymasterService.context, // [!code focus]
+  }); // [!code focus]
+}
+```
+
+```ts twoslash [usePaymasterStubData.ts]
+// @filename: usePaymasterStubData.ts
+// ---cut---
+// [!include ~/snippets/usePaymasterStubData.ts]
+```
+:::
+
+### 3. Estimate user operation gas
+
+Use permissionless.js to create a bundler client and get gas estimates using the user operation we constructed with the paymaster stub values we received from the app-provided paymaster URL.
+
+:::code-group
+```ts twoslash [useSponsoredUserOp.ts]
+// @filename: usePaymasterStubData.ts
+// [!include ~/snippets/usePaymasterStubData.ts]
+
+// @filename: useGasEstimates.ts
+const process = { env: { BUNDLER_URL: '' } }
+// [!include ~/snippets/useGasEstimates.ts]
+
+// @filename: useSponsoredUserOp.ts
+import { UserOperation } from "permissionless";
+import { useMemo } from "react";
+import { Address, Hex, concat, toHex } from "viem";
+import { useEstimateMaxPriorityFeePerGas, useGasPrice } from "wagmi";
+import {
+  ENTRYPOINT_ADDRESS_V06_TYPE,
+  GetEntryPointVersion,
+} from "permissionless/types";
+import { usePaymasterStubData } from "./usePaymasterStubData";
+import { useGasEstimates } from "./useGasEstimates";
+
+type SendCallsParams = {
+  from: Address;
+  chainId: Hex;
+  calls: {
+    to: Address;
+    data: Hex;
+    value: bigint;
+  }[];
+  capabilities: {
+    paymasterService: {
+      url: string;
+      context?: Record<string, any>;
+    };
+  };
+};
+
+// Hook that accepts calls and capabilities from an EIP-5792 wallet_sendCalls request.
+export function useSponsoredUserOp({
+  from,
+  chainId,
+  calls,
+  capabilities,
+}: SendCallsParams) {
+  const { data: maxFeePerGas } = useGasPrice();
+  const { data: maxPriorityFeePerGas } = useEstimateMaxPriorityFeePerGas();
+
+  // For illustrative purposes we are just concatenating all the calls' fields together, but in practice the callData
+  // will depend on the account's implementation.
+  const callData = useMemo(
+    () =>
+      concat(
+        calls.map((call) => concat([call.to, call.data, toHex(call.value)]))
+      ),
+    [calls]
+  );
+
+  const userOpPreStubData:
+    | Omit<
+        UserOperation<GetEntryPointVersion<ENTRYPOINT_ADDRESS_V06_TYPE>>,
+        "signature" | "paymasterAndData"
+      >
+    | undefined = useMemo(
+    () =>
+      maxFeePerGas && maxPriorityFeePerGas
+        ? {
+            nonce: 0n,
+            sender: from,
+            initCode: "0x",
+            callData,
+            maxFeePerGas,
+            maxPriorityFeePerGas,
+            preVerificationGas: 0n,
+            verificationGasLimit: 0n,
+            callGasLimit: 0n,
+          }
+        : undefined,
+    [from, maxFeePerGas, maxPriorityFeePerGas, callData]
+  );
+// ---cut---
+  // ...
+  const { data: paymasterStubData } = usePaymasterStubData({
+    userOp: userOpPreStubData,
+    chainId,
+    paymasterUrl: capabilities.paymasterService.url,
+    context: capabilities.paymasterService.context,
+  });
+
+  const userOpWithStubData: // [!code focus]
+    | UserOperation<GetEntryPointVersion<ENTRYPOINT_ADDRESS_V06_TYPE>> // [!code focus]
+    | undefined = useMemo( // [!code focus]
+    () => // [!code focus]
+      userOpPreStubData && paymasterStubData // [!code focus]
+        ? { // [!code focus]
+            ...userOpPreStubData, // [!code focus]
+            paymasterAndData: paymasterStubData, // [!code focus]
+            signature: "0x", // Dummy signature, dependent on account implementation. // [!code focus]
+            callGasLimit: 0n, // [!code focus]
+            verificationGasLimit: 0n, // [!code focus]
+            preVerificationGas: 0n, // [!code focus]
+          } // [!code focus]
+        : undefined, // [!code focus]
+    [userOpPreStubData, paymasterStubData] // [!code focus]
+  ); // [!code focus]
+
+  const { data: gasEstimates } = useGasEstimates({ // [!code focus]
+    userOp: userOpWithStubData, // [!code focus]
+    chainId, // [!code focus]
+  }); // [!code focus]
+}
+```
+
+```ts twoslash [useGasEstimates.ts]
+// @filename: useGasEstimates.ts
+const process = { env: { BUNDLER_URL: '' } }
+// ---cut---
+// [!include ~/snippets/useGasEstimates.ts]
+```
+:::
+
+### 4. Get paymaster values
+
+Use permissionless.js to create a paymaster client and call `pm_getPaymasterData` to get real paymaster values that will be used during user operation submission (`eth_sendUserOperation`).
+
+:::code-group
+```ts twoslash [useSponsoredUserOp.ts]
+// @filename: usePaymasterStubData.ts
+// [!include ~/snippets/usePaymasterStubData.ts]
+
+// @filename: useGasEstimates.ts
+const process = { env: { BUNDLER_URL: '' } }
+// [!include ~/snippets/useGasEstimates.ts]
+
+// @filename: usePaymasterData.ts
+// [!include ~/snippets/usePaymasterData.ts]
+
+// @filename: useSponsoredUserOp.ts
+import { UserOperation } from "permissionless";
+import { useMemo } from "react";
+import { Address, Hex, concat, toHex } from "viem";
+import { useEstimateMaxPriorityFeePerGas, useGasPrice } from "wagmi";
+import {
+  ENTRYPOINT_ADDRESS_V06_TYPE,
+  GetEntryPointVersion,
+} from "permissionless/types";
+import { usePaymasterStubData } from "./usePaymasterStubData";
+import { useGasEstimates } from "./useGasEstimates";
+import { usePaymasterData } from "./usePaymasterData";
+
+type SendCallsParams = {
+  from: Address;
+  chainId: Hex;
+  calls: {
+    to: Address;
+    data: Hex;
+    value: bigint;
+  }[];
+  capabilities: {
+    paymasterService: {
+      url: string;
+      context?: Record<string, any>;
+    };
+  };
+};
+
+// Hook that accepts calls and capabilities from an EIP-5792 wallet_sendCalls request.
+export function useSponsoredUserOp({
+  from,
+  chainId,
+  calls,
+  capabilities,
+}: SendCallsParams) {
+  const { data: maxFeePerGas } = useGasPrice();
+  const { data: maxPriorityFeePerGas } = useEstimateMaxPriorityFeePerGas();
+
+  // For illustrative purposes we are just concatenating all the calls' fields together, but in practice the callData
+  // will depend on the account's implementation.
+  const callData = useMemo(
+    () =>
+      concat(
+        calls.map((call) => concat([call.to, call.data, toHex(call.value)]))
+      ),
+    [calls]
+  );
+
+  const userOpPreStubData:
+    | Omit<
+        UserOperation<GetEntryPointVersion<ENTRYPOINT_ADDRESS_V06_TYPE>>,
+        "signature" | "paymasterAndData"
+      >
+    | undefined = useMemo(
+    () =>
+      maxFeePerGas && maxPriorityFeePerGas
+        ? {
+            nonce: 0n,
+            sender: from,
+            initCode: "0x",
+            callData,
+            maxFeePerGas,
+            maxPriorityFeePerGas,
+            preVerificationGas: 0n,
+            verificationGasLimit: 0n,
+            callGasLimit: 0n,
+          }
+        : undefined,
+    [from, maxFeePerGas, maxPriorityFeePerGas, callData]
+  );
+
+  const { data: paymasterStubData } = usePaymasterStubData({
+    userOp: userOpPreStubData,
+    chainId,
+    paymasterUrl: capabilities.paymasterService.url,
+    context: capabilities.paymasterService.context,
+  });
+
+  const userOpWithStubData:
+    | UserOperation<GetEntryPointVersion<ENTRYPOINT_ADDRESS_V06_TYPE>>
+    | undefined = useMemo(
+    () =>
+      userOpPreStubData && paymasterStubData
+        ? {
+            ...userOpPreStubData,
+            paymasterAndData: paymasterStubData,
+            signature: "0x", // Dummy signature, dependent on account implementation.
+            callGasLimit: 0n,
+            verificationGasLimit: 0n,
+            preVerificationGas: 0n,
+          }
+        : undefined,
+    [userOpPreStubData, paymasterStubData]
+  );
+
+// ---cut---
+  // ...
+  const { data: gasEstimates } = useGasEstimates({
+    userOp: userOpWithStubData,
+    chainId,
+  });
+
+  const userOpWithGasEstimates = useMemo( // [!code focus]
+    () => // [!code focus]
+      userOpWithStubData && gasEstimates // [!code focus]
+        ? { // [!code focus]
+            ...userOpWithStubData, // [!code focus]
+            callGasLimit: gasEstimates.callGasLimit, // [!code focus]
+            verificationGasLimit: gasEstimates.verificationGasLimit, // [!code focus]
+            preVerificationGas: gasEstimates.preVerificationGas, // [!code focus]
+          } // [!code focus]
+        : undefined, // [!code focus]
+    [userOpWithStubData, gasEstimates] // [!code focus]
+  ); // [!code focus]
+
+  const { data: paymasterData } = usePaymasterData({ // [!code focus]
+    userOp: userOpWithGasEstimates, // [!code focus]
+    chainId, // [!code focus]
+    paymasterUrl: capabilities.paymasterService.url, // [!code focus]
+    context: capabilities.paymasterService.context, // [!code focus]
+  }); // [!code focus]
+}
+```
+
+```ts twoslash [usePaymasterData.ts]
+// @filename: usePaymasterData.ts
+// ---cut---
+// [!include ~/snippets/usePaymasterData.ts]
+```
+:::
+
+### 5. Construct user operation for user to sign with paymaster values
+
+```ts twoslash [useSponsoredUserOp.ts]
+// @filename: usePaymasterStubData.ts
+// [!include ~/snippets/usePaymasterStubData.ts]
+
+// @filename: useGasEstimates.ts
+const process = { env: { BUNDLER_URL: '' } }
+// [!include ~/snippets/useGasEstimates.ts]
+
+// @filename: usePaymasterData.ts
+// [!include ~/snippets/usePaymasterData.ts]
+
+// @filename: useSponsoredUserOp.ts
+import { UserOperation } from "permissionless";
+import { useMemo } from "react";
+import { Address, Hex, concat, toHex } from "viem";
+import { useEstimateMaxPriorityFeePerGas, useGasPrice } from "wagmi";
+import {
+  ENTRYPOINT_ADDRESS_V06_TYPE,
+  GetEntryPointVersion,
+} from "permissionless/types";
+import { usePaymasterStubData } from "./usePaymasterStubData";
+import { useGasEstimates } from "./useGasEstimates";
+import { usePaymasterData } from "./usePaymasterData";
+
+type SendCallsParams = {
+  from: Address;
+  chainId: Hex;
+  calls: {
+    to: Address;
+    data: Hex;
+    value: bigint;
+  }[];
+  capabilities: {
+    paymasterService: {
+      url: string;
+      context?: Record<string, any>;
+    };
+  };
+};
+
+// Hook that accepts calls and capabilities from an EIP-5792 wallet_sendCalls request.
+export function useSponsoredUserOp({
+  from,
+  chainId,
+  calls,
+  capabilities,
+}: SendCallsParams) {
+  const { data: maxFeePerGas } = useGasPrice();
+  const { data: maxPriorityFeePerGas } = useEstimateMaxPriorityFeePerGas();
+
+  // For illustrative purposes we are just concatenating all the calls' fields together, but in practice the callData
+  // will depend on the account's implementation.
+  const callData = useMemo(
+    () =>
+      concat(
+        calls.map((call) => concat([call.to, call.data, toHex(call.value)]))
+      ),
+    [calls]
+  );
+
+  const userOpPreStubData:
+    | Omit<
+        UserOperation<GetEntryPointVersion<ENTRYPOINT_ADDRESS_V06_TYPE>>,
+        "signature" | "paymasterAndData"
+      >
+    | undefined = useMemo(
+    () =>
+      maxFeePerGas && maxPriorityFeePerGas
+        ? {
+            nonce: 0n,
+            sender: from,
+            initCode: "0x",
+            callData,
+            maxFeePerGas,
+            maxPriorityFeePerGas,
+            preVerificationGas: 0n,
+            verificationGasLimit: 0n,
+            callGasLimit: 0n,
+          }
+        : undefined,
+    [from, maxFeePerGas, maxPriorityFeePerGas, callData]
+  );
+
+  const { data: paymasterStubData } = usePaymasterStubData({
+    userOp: userOpPreStubData,
+    chainId,
+    paymasterUrl: capabilities.paymasterService.url,
+    context: capabilities.paymasterService.context,
+  });
+
+  const userOpWithStubData:
+    | UserOperation<GetEntryPointVersion<ENTRYPOINT_ADDRESS_V06_TYPE>>
+    | undefined = useMemo(
+    () =>
+      userOpPreStubData && paymasterStubData
+        ? {
+            ...userOpPreStubData,
+            paymasterAndData: paymasterStubData,
+            signature: "0x", // Dummy signature, dependent on account implementation.
+            callGasLimit: 0n,
+            verificationGasLimit: 0n,
+            preVerificationGas: 0n,
+          }
+        : undefined,
+    [userOpPreStubData, paymasterStubData]
+  );
+
+  const { data: gasEstimates } = useGasEstimates({
+    userOp: userOpWithStubData,
+    chainId,
+  });
+
+  const userOpWithGasEstimates = useMemo(
+    () =>
+      userOpWithStubData && gasEstimates
+        ? {
+            ...userOpWithStubData,
+            callGasLimit: gasEstimates.callGasLimit,
+            verificationGasLimit: gasEstimates.verificationGasLimit,
+            preVerificationGas: gasEstimates.preVerificationGas,
+          }
+        : undefined,
+    [userOpWithStubData, gasEstimates]
+  );
+
+// ---cut---
+  // ...
+
+  const { data: paymasterData } = usePaymasterData({
+    userOp: userOpWithGasEstimates,
+    chainId,
+    paymasterUrl: capabilities.paymasterService.url,
+    context: capabilities.paymasterService.context,
+  });
+
+  return useMemo( // [!code focus]
+    () => ({ // [!code focus]
+      ...userOpWithGasEstimates, // [!code focus]
+      paymasterAndData: paymasterData, // [!code focus]
+    }), // [!code focus]
+    [userOpWithGasEstimates, paymasterData] // [!code focus]
+  ); // [!code focus]
+}
+```
+
+This is the user operation the user will sign before the wallet submits it to a bundler using the `eth_sendUserOperation` RPC method.
